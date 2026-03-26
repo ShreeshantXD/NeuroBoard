@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - frontend
+      - backend
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017
+    expose:
+      - "8000"
+    depends_on:
+      - mongodb
+
+  mongodb:
+    image: mongo:latest
+    # Exposing only for local development/debug contexts
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  mongo_data:
