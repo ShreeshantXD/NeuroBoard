@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import canvas, math, diagram, suggestions
+from app.routers import canvas, math, diagram, suggestions, websockets
 
 # Initialize the main FastAPI app
 app = FastAPI(
@@ -22,6 +22,7 @@ app.include_router(canvas.router)
 app.include_router(math.router)
 app.include_router(diagram.router)
 app.include_router(suggestions.router)
+app.include_router(websockets.router)
 
 @app.get("/")
 def read_root():
