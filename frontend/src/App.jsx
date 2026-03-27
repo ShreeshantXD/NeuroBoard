@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Toolbar from "./Toolbar";
 import CanvasBoard from "./CanvasBoard";
 import SuggestionPanel from "./SuggestionPanel";
@@ -38,6 +38,7 @@ export default function App() {
   
   const [zoomLevel, setZoomLevel] = useState(100);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
 
   const canvasRef = useRef(null);
   const API_URL = "http://localhost:3001/api";
@@ -55,6 +56,49 @@ export default function App() {
       setShowPlaceholder(true);
     }
   };
+
+  const handleUndo = () => {
+    if (canvasRef.current && canvasRef.current.undo) {
+      canvasRef.current.undo();
+    }
+  };
+
+  const handleRedo = () => {
+    if (canvasRef.current && canvasRef.current.redo) {
+      canvasRef.current.redo();
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Process only if not typing inside an input/contenteditable
+      if (
+        e.target.tagName === "INPUT" ||
+        e.target.tagName === "TEXTAREA" ||
+        e.target.isContentEditable
+      ) {
+        return;
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (cmdOrCtrl && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if (cmdOrCtrl && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const setApiStatusTemp = (msg, duration = 2000) => {
     setAiStatus(msg);
@@ -99,7 +143,8 @@ export default function App() {
         }
       } catch (err) {
         console.error(err);
-        setAiState({ status: "error", message: "Couldn't process" });
+        setAiState({ status: "error", message: "Error parsing sketch" });
+        setError(err.message);
       }
     }
   };
@@ -121,6 +166,7 @@ export default function App() {
           brushColor={brushColor}
           brushSize={brushSize}
           onZoomChange={setZoomLevel}
+          onHistoryChange={setHistoryState}
         />
       </main>
 
@@ -142,9 +188,10 @@ export default function App() {
         activeTool={activeTool}
         setActiveTool={setActiveTool}
         onClearCanvas={handleClearCanvas}
-        // Undo/Redo are placeholders for now unless implemented in CanvasBoard
-        onUndo={() => {}}
-        onRedo={() => {}}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={historyState.canUndo}
+        canRedo={historyState.canRedo}
       />
 
       {/* ── Bottom Right: Zoom Controls ── */}

@@ -3,6 +3,10 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "openrouter/auto"; // High-availability Free Vision Model
 
 async function callOpenRouter(messages) {
+  if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === "your_api_key_here") {
+    throw new Error("Missing OPENROUTER_API_KEY. Please set it in backend/.env!");
+  }
+
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -45,28 +49,34 @@ async function solveImageMath(base64Image) {
   const messages = [
     {
       role: "system",
-      content: `You are an OCR and Math parser. You MUST return ONLY valid JSON.
-      Return exactly this format:
-      {
-        "expressions": [
-          { "expression": "4-3=", "result": 1 },
-          { "expression": "1+2=", "result": 3 }
-        ]
-      }
-      Rules:
-      - No explanations, no extra text, no markdown block quotes.
-      - Each line is a separate expression.
-      - Evaluate the math accurately following standard BODMAS.
-      - Replace implicit multiplication, e.g., 2(3+4) becomes 2*(3+4).
-      - If no math is found, return { "expressions": [] }.`
+      content: `Identify all math expressions in the drawing.
+
+IMPORTANT RULES:
+- If the symbol 'π' (pi) is detected, treat it as the constant value 3.1416
+- If π appears inside an expression, replace it before solving
+- Examples:
+  π = → answer should be 3.1416
+  2π = → answer should be 6.2832
+  π + π = → answer should be 6.2832
+
+- Always compute the final numerical result after replacing π
+
+For each expression ending with '=', solve it.
+
+Return a JSON array of objects with:
+- "expr": the full expression (e.g., "2π=")
+- "ans": the numerical result (e.g., "6.2832")
+- "x": horizontal percentage (0 to 100) where answer should be placed
+- "y": vertical percentage (0 to 100) aligned with expression
+- "angle": angle of the expression in degrees
+
+VERY IMPORTANT:
+- Return ONLY valid JSON array
+- No markdown, no explanation`
     },
     {
       role: "user",
       content: [
-        {
-          type: "text",
-          text: `Identify and solve all math expressions ending in '=' in this image.`
-        },
         {
           type: "image_url",
           image_url: {
@@ -85,11 +95,26 @@ async function solveImageMath(base64Image) {
     // Remove markdown code blocks
     cleaned = cleaned.replace(/```json/gi, '').replace(/```/g, '').trim();
     
-    // Extract everything between first { and last }
+    // Find outermost JSON structure (array or object)
     const firstBrace = cleaned.indexOf('{');
+    const firstBracket = cleaned.indexOf('[');
     const lastBrace = cleaned.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace >= firstBrace) {
-      cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+    const lastBracket = cleaned.lastIndexOf(']');
+
+    // Get the earliest opening character
+    let firstIdx = -1;
+    if (firstBrace !== -1 && firstBracket !== -1) firstIdx = Math.min(firstBrace, firstBracket);
+    else if (firstBrace !== -1) firstIdx = firstBrace;
+    else if (firstBracket !== -1) firstIdx = firstBracket;
+
+    // Get the latest closing character
+    let lastIdx = -1;
+    if (lastBrace !== -1 && lastBracket !== -1) lastIdx = Math.max(lastBrace, lastBracket);
+    else if (lastBrace !== -1) lastIdx = lastBrace;
+    else if (lastBracket !== -1) lastIdx = lastBracket;
+
+    if (firstIdx !== -1 && lastIdx !== -1 && lastIdx >= firstIdx) {
+      cleaned = cleaned.substring(firstIdx, lastIdx + 1);
     }
     
     console.log("[AI Image response] Raw:", result);
@@ -97,12 +122,28 @@ async function solveImageMath(base64Image) {
     
     const parsed = JSON.parse(cleaned);
     
+    // Format 1: New Prompt -> Array of { expr, ans, x, y, angle }
+    if (Array.isArray(parsed)) {
+      return parsed.map(item => ({
+        expr: item.expr || item.expression || "",
+        ans: item.ans !== undefined ? item.ans : item.result
+      })).filter(item => item.ans !== undefined);
+    }
+
+    // Format 2: Model returned a single naked object instead of an Array
+    if (parsed && !Array.isArray(parsed) && (parsed.ans !== undefined || parsed.result !== undefined)) {
+      return [{
+        expr: parsed.expr || parsed.expression || "",
+        ans: parsed.ans !== undefined ? parsed.ans : parsed.result
+      }];
+    }
+    
+    // Format 3: Old Prompt fallback -> { expressions: [ { expression, result } ] }
     if (parsed && Array.isArray(parsed.expressions)) {
-      // Map to the format CanvasBoard expects (expr, ans)
       return parsed.expressions.map(item => ({
-        expr: item.expression,
-        ans: item.result
-      }));
+        expr: item.expression || item.expr || "",
+        ans: item.result !== undefined ? item.result : item.ans
+      })).filter(item => item.ans !== undefined);
     }
     
     return [];
