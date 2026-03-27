@@ -22,7 +22,7 @@ import { cachedEval, normalizeExpression, evaluateLines } from "./mathUtils";
  *  - Fade-in animation via opacity stepping
  *  - ×, ÷ symbol normalization before parsing
  */
-const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChange }, ref) => {
+const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChange, onHistoryChange }, ref) => {
   const canvasElRef = useRef(null);
   const fabricRef = useRef(null);
   const containerRef = useRef(null);
@@ -34,6 +34,48 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
 
   // Debounce timer for text:changed
   const mathDebounceRef = useRef(null);
+
+  // Undo / Redo stacks
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+  const isProcessingHistoryRef = useRef(false);
+  const saveHistoryTimeoutRef = useRef(null);
+
+  // Debounced save state helper
+  const saveHistory = () => {
+    if (isProcessingHistoryRef.current) return;
+    
+    if (saveHistoryTimeoutRef.current) {
+      clearTimeout(saveHistoryTimeoutRef.current);
+    }
+    
+    saveHistoryTimeoutRef.current = setTimeout(() => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+      
+      // Save current state with custom props
+      const json = JSON.stringify(canvas.toJSON(["__uid", "__isMathResult", "__resultKey", "id"]));
+      
+      // Avoid identical consecutive states
+      if (undoStackRef.current.length > 0 && undoStackRef.current[undoStackRef.current.length - 1] === json) {
+        return;
+      }
+
+      undoStackRef.current.push(json);
+      
+      // Prevent unbounded memory growth
+      if (undoStackRef.current.length > 50) {
+        undoStackRef.current.shift();
+      }
+      
+      redoStackRef.current = [];
+      
+      if (onHistoryChange) {
+        onHistoryChange({ canUndo: undoStackRef.current.length > 1, canRedo: false });
+      }
+    }, 100);
+  };
+
 
   // ── Initialize fabric canvas ───────────────────────────────────────────────
   useEffect(() => {
@@ -55,6 +97,14 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
       canvas.renderAll();
     };
     window.addEventListener("resize", handleResize);
+
+    // Initial state save
+    saveHistory();
+
+    // Listen to changes for history
+    canvas.on("object:added", saveHistory);
+    canvas.on("object:modified", saveHistory);
+    canvas.on("object:removed", saveHistory);
 
     // ── INLINE MATH SOLVER (IText) ─────────────────────────────────────────
     canvas.on("text:changed", (opt) => {
@@ -489,6 +539,52 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
 
   // ── Imperative API ────────────────────────────────────────────────────────
   useImperativeHandle(ref, () => ({
+    undo: () => {
+      const canvas = fabricRef.current;
+      if (!canvas || undoStackRef.current.length <= 1) return;
+      
+      isProcessingHistoryRef.current = true;
+      
+      // Pop current state onto redo stack
+      const currentState = undoStackRef.current.pop();
+      redoStackRef.current.push(currentState);
+      
+      // Get previous state to render
+      const previousState = undoStackRef.current[undoStackRef.current.length - 1];
+      
+      canvas.loadFromJSON(previousState, () => {
+        canvas.renderAll();
+        isProcessingHistoryRef.current = false;
+        if (onHistoryChange) {
+          onHistoryChange({
+            canUndo: undoStackRef.current.length > 1,
+            canRedo: redoStackRef.current.length > 0
+          });
+        }
+      });
+    },
+
+    redo: () => {
+      const canvas = fabricRef.current;
+      if (!canvas || redoStackRef.current.length === 0) return;
+      
+      isProcessingHistoryRef.current = true;
+      
+      const nextState = redoStackRef.current.pop();
+      undoStackRef.current.push(nextState);
+      
+      canvas.loadFromJSON(nextState, () => {
+        canvas.renderAll();
+        isProcessingHistoryRef.current = false;
+        if (onHistoryChange) {
+          onHistoryChange({
+            canUndo: undoStackRef.current.length > 1,
+            canRedo: redoStackRef.current.length > 0
+          });
+        }
+      });
+    },
+
     /**
      * addText — places a text label on canvas at a smart position.
      * Optionally accepts (content, x, y) to position explicitly.
@@ -517,9 +613,16 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
     clearCanvas() {
       const canvas = fabricRef.current;
       if (!canvas) return;
+      
       resultMapRef.current.clear();
+      
+      isProcessingHistoryRef.current = true;
       canvas.clear();
-      canvas.setBackgroundColor("transparent", () => canvas.renderAll());
+      canvas.setBackgroundColor("transparent", () => {
+        canvas.renderAll();
+        isProcessingHistoryRef.current = false;
+        saveHistory();
+      });
     },
 
     zoomCanvas(direction) {
