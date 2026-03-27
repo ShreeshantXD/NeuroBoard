@@ -9,6 +9,10 @@ require("nerdamer/Calculus");
 require("nerdamer/Algebra");
 
 async function callOpenRouter(messages) {
+  if (!OPENROUTER_API_KEY || OPENROUTER_API_KEY === "your_api_key_here") {
+    throw new Error("Missing OPENROUTER_API_KEY. Please set it in backend/.env!");
+  }
+
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
