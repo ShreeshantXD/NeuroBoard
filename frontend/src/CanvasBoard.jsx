@@ -5,7 +5,7 @@ import React, {
   forwardRef,
 } from "react";
 import { fabric } from "fabric";
-import { cachedEval, normalizeExpression, evaluateLines } from "./mathUtils";
+import { cachedEval, normalizeExpression, evaluateLines, cleanMathOutput } from "./mathUtils";
 
 
 /**
@@ -22,7 +22,7 @@ import { cachedEval, normalizeExpression, evaluateLines } from "./mathUtils";
  *  - Fade-in animation via opacity stepping
  *  - ×, ÷ symbol normalization before parsing
  */
-const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChange, onHistoryChange }, ref) => {
+const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChange, onHistoryChange, onAiStatusChange }, ref) => {
   const canvasElRef = useRef(null);
   const fabricRef = useRef(null);
   const containerRef = useRef(null);
@@ -141,45 +141,13 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
     canvas.freeDrawingBrush.color = brushColor;
     canvas.freeDrawingBrush.width = brushSize;
 
-    // Save initial state for history
-    const saveState = () => {
-      if (isHistoryProcessing.current) return;
-
-      // Prevent saving if our phantom objects are changing right now
-      // Since aiStatusLabelRef or text labels are added via code, we might want to track them anyway
-      const json = canvas.toJSON(["__isMathResult", "fontFamily", "selectable", "evented"]);
-
-      // If we made a change, drop the 'future' redo states
-      if (historyIndexRef.current < historyRef.current.length - 1) {
-        historyRef.current = historyRef.current.slice(0, historyIndexRef.current + 1);
-      }
-      historyRef.current.push(json);
-      // Limit history size to 50 steps
-      if (historyRef.current.length > 50) {
-        historyRef.current.shift();
-      } else {
-        historyIndexRef.current = historyRef.current.length - 1;
-      }
-    };
-
-    // Delay initial save slightly to let empty canvas render
-    setTimeout(() => {
-      saveState();
-      // Attach history listeners after initial save
-      canvas.on("object:added", saveState);
-      canvas.on("object:modified", saveState);
-      canvas.on("object:removed", saveState);
-      canvas.on("path:created", saveState);
-    }, 100);
-
     return () => {
       window.removeEventListener("resize", handleResize);
       if (mathDebounceRef.current) clearTimeout(mathDebounceRef.current);
       if (sketchTimer) clearTimeout(sketchTimer);
-      canvas.off("object:added", saveState);
-      canvas.off("object:modified", saveState);
-      canvas.off("object:removed", saveState);
-      canvas.off("path:created", saveState);
+      canvas.off("object:added", saveHistory);
+      canvas.off("object:modified", saveHistory);
+      canvas.off("object:removed", saveHistory);
       canvas.dispose();
     };
   }, []);
@@ -254,18 +222,22 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
           });
           const data = await res.json();
           removeResultByKey(canvas, aiStatusKey);
-
+          
           if (data.answer && !data.error) {
-            const displayFontSize = Math.max(16, Math.min(48, fontSize * 1.15));
-            placeResultAt(canvas, key, data.answer.toString(), resLeft, resTop, displayFontSize, originY, obj.fontFamily || "'Inter', sans-serif");
-            if (onAiStatusChange) onAiStatusChange({ status: "success", message: "Solved" });
+            const displayFontSize = Math.max(16, Math.min(48, fontSize * 1.05));
+            const humanExpr = expression.split('').map(c => /[+*/=-]/.test(c) ? ` ${c} ` : c).join('').replace(/\s+/g, ' ').trim();
+            const fullResultText = `${humanExpr} = ${cleanMathOutput(data.answer)}`;
+            placeResultAt(canvas, key, fullResultText, resLeft, resTop, displayFontSize, originY, obj.fontFamily || "'Inter', sans-serif");
+            if (onAiStatusChange) {
+              onAiStatusChange({ status: "success", message: "Solved" });
+              setTimeout(() => onAiStatusChange({ status: "idle", message: "" }), 3000);
+            }
           } else {
-            if (onAiStatusChange) onAiStatusChange({ status: "error", message: "Failed, retrying..." });
-            // Final fallback could be a local re-eval or just silence
+            if (onAiStatusChange) onAiStatusChange({ status: "error", message: "Couldn't understand this line" });
           }
         } catch (err) {
           removeResultByKey(canvas, aiStatusKey);
-          if (onAiStatusChange) onAiStatusChange({ status: "error", message: "Failed, retrying..." });
+          if (onAiStatusChange) onAiStatusChange({ status: "error", message: "Error parsing line" });
         }
         continue;
       }
@@ -291,11 +263,18 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
         originY = "center";
       }
 
-      const displayFontSize = Math.max(16, Math.min(48, fontSize * 1.15));
-      resLeft = Math.max(4, Math.min(resLeft, canvasW - displayFontSize * 2 - 4));
+      const displayFontSize = Math.max(16, Math.min(48, fontSize * 1.05));
+      resLeft = Math.max(4, Math.min(resLeft, canvasW - displayFontSize * 8 - 4));
       resTop = Math.max(displayFontSize / 2, Math.min(resTop, canvasH - displayFontSize));
 
-      placeResultAt(canvas, key, formatted, resLeft, resTop, displayFontSize, originY, obj.fontFamily || "'Inter', sans-serif");
+      const humanExpr = expression.split('').map(c => /[+*/=-]/.test(c) ? ` ${c} ` : c).join('').replace(/\s+/g, ' ').trim();
+      const fullResultText = `${humanExpr} = ${formatted}`;
+      
+      placeResultAt(canvas, key, fullResultText, resLeft, resTop, displayFontSize, originY, obj.fontFamily || "'Inter', sans-serif");
+      if (onAiStatusChange) {
+        onAiStatusChange({ status: "success", message: "Solved" });
+        setTimeout(() => onAiStatusChange({ status: "idle", message: "" }), 3000);
+      }
     }
 
     // Clean up results for lines that no longer exist
@@ -412,8 +391,9 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
     fabricRef.current.add(label);
     animateFadeIn(fabricRef.current, label, 200);
 
-    if (onAiStatusChange) {
-      onAiStatusChange({ status: "loading", message: text });
+    if (onHistoryChange) {
+      // We don't have a direct status bubble in history change 
+      // but we could extend it if needed.
     }
   }
 
@@ -460,7 +440,7 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
     if (answers.length > 0) {
       // ── Smart placement: cluster strokes into lines ──────
       const drawnObjects = canvas.getObjects().filter(
-        (o) => !o.__isMathResult && o !== status && o.type !== "i-text"
+        (o) => !o.__isMathResult && o !== aiStatusLabelRef.current && o.type !== "i-text"
       );
 
       const lines = [];
@@ -489,35 +469,58 @@ const CanvasBoard = forwardRef(({ activeTool, brushColor, brushSize, onZoomChang
         lines.push({ minX: 50, minY: 50, maxX: 200, maxY: 100, centerY: 75 });
       }
 
-      const GAP = 16;
+      const GAP = 14;
       const canvasW = canvas.getWidth();
       const canvasH = canvas.getHeight();
 
-      answers.forEach((item, index) => {
+      // Helper to clean up math output for display
+      const cleanMathOutput = (str) => {
+        if (!str) return "";
+        return str.replace(/\\frac{([^}]+)}{([^}]+)}/g, "($1)/($2)") // Fractions
+                  .replace(/\\cdot/g, "*") // Multiplication dot
+                  .replace(/\\times/g, "*") // Multiplication cross
+                  .replace(/\\div/g, "/") // Division
+                  .replace(/\\sqrt{([^}]+)}/g, "sqrt($1)") // Square root
+                  .replace(/\\left\(/g, "(") // Left parenthesis
+                  .replace(/\\right\)/g, ")") // Right parenthesis
+                  .replace(/\\ /g, " ") // Escaped spaces
+                  .replace(/\\text{([^}]+)}/g, "$1") // Text
+                  .replace(/\\/g, "") // Any remaining backslashes
+                  .trim();
+      };
+
+      // Use the new structured 'results' array from backend if available, otherwise fallback to index mapping
+      const resultData = data.results || answers;
+
+      resultData.forEach((item, index) => {
         const lineBox = lines[index] || lines[lines.length - 1];
         const exprHeight = lineBox.maxY - lineBox.minY;
 
-        // Size: ~1.2x of expression height, clamped between 16 and 48px
-        const displayFontSize = Math.max(16, Math.min(48, exprHeight * 1.2));
+        // Structured or simple?
+        const answerText = typeof item === "object" ? (item.solution ? item.solution[0] : JSON.stringify(item)) : item;
+        const inputExpression = typeof item === "object" ? item.expression : "";
+
+        // Smart Scaling: 1.1x of expression height, clamped 16-40
+        const displayFontSize = Math.max(16, Math.min(40, exprHeight * 1.1));
 
         let ansLeft = lineBox.maxX + GAP;
         let ansTop = lineBox.centerY;
         let ansOriginY = "center";
 
-        // Clamp to right edge or wrap
-        const estimatedAnswerW = displayFontSize * 1.5;
-        if (ansLeft + estimatedAnswerW > canvasW - 20) {
+        // If the expression itself contains an '=', we should probably just show the solution
+        const displayText = inputExpression && inputExpression.includes('=') ? cleanMathOutput(answerText) : `${cleanMathOutput(inputExpression)} = ${cleanMathOutput(answerText)}`;
+
+        // Wrap to next line if it would overflow right edge
+        const estimatedW = displayFontSize * displayText.length * 0.6;
+        if (ansLeft + estimatedW > canvasW - 20) {
           ansLeft = lineBox.minX;
-          ansTop = lineBox.maxY + GAP;
+          ansTop = lineBox.maxY + 10;
           ansOriginY = "top";
         }
         ansTop = Math.max(displayFontSize / 2 + 4, Math.min(ansTop, canvasH - displayFontSize - 4));
 
         const key = `sketch_line_${Date.now()}_${index}`;
-        const answerText = typeof item === "object"
-          ? (item.ans || item.value || JSON.stringify(item))
-          : item;
-        placeResultAt(canvas, key, String(answerText), ansLeft, ansTop, displayFontSize, ansOriginY);
+        placeResultAt(canvas, key, String(displayText), ansLeft, ansTop, displayFontSize, ansOriginY);
       });
 
       canvas.renderAll();

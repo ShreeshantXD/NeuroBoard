@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Toolbar from "./Toolbar";
 import CanvasBoard from "./CanvasBoard";
 import SuggestionPanel from "./SuggestionPanel";
@@ -110,73 +110,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Process only if not typing inside an input/contenteditable
-      if (
-        e.target.tagName === "INPUT" ||
-        e.target.tagName === "TEXTAREA" ||
-        e.target.isContentEditable
-      ) {
-        return;
-      }
-
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
-
-      if (cmdOrCtrl && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-      } else if (cmdOrCtrl && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        handleRedo();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Process only if not typing inside an input/contenteditable
-      if (
-        e.target.tagName === "INPUT" ||
-        e.target.tagName === "TEXTAREA" ||
-        e.target.isContentEditable
-      ) {
-        return;
-      }
-
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
-
-      if (cmdOrCtrl && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) {
-          handleRedo();
-        } else {
-          handleUndo();
-        }
-      } else if (cmdOrCtrl && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        handleRedo();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
-  const setApiStatusTemp = (msg) => {
-    setAiState({ status: "success", message: msg });
-  };
-
   const [showPlaceholder, setShowPlaceholder] = useState(true);
 
   const handleTopicSearch = async (topic) => {
@@ -239,6 +172,7 @@ export default function App() {
           brushSize={brushSize}
           onZoomChange={setZoomLevel}
           onHistoryChange={setHistoryState}
+          onAiStatusChange={setAiState}
         />
       </main>
 
