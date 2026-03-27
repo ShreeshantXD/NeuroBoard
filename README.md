@@ -1,64 +1,60 @@
-# AI Smart Canvas
+# NeuroBoard (Competition Demo)
+**From rough sketches to intelligent diagrams.**
 
-This is an AI-powered digital whiteboard designed for classrooms, engineers, and collaborative learning.
+This project is a simplified version of NeuroBoard designed for local competition presentations. It uses a Smart Canvas with Fabric.js, a Math Solver via OpenRouter, and AI-powered Diagram Suggestions.
 
-## Project Overview
+---
 
-AI Smart Canvas transforms a normal digital whiteboard into an intelligent assistant capable of:
-- Converting rough sketches into clean diagrams
-- Recognizing handwritten math and solving it
-- Understanding written topics and suggesting related diagrams
-- Automatically aligning shapes
-- Supporting collaborative drawing via WebSockets
-- Working on touch screens, tablets, and smart boards
+## 🛠 Features
+1. **Smart Canvas**: Draw rectangles, circles, arrows, and text.
+2. **Clean Diagram**: Instantly convert rough freehand sketches into perfect geometric shapes.
+3. **Math Solver**: Type an expression (e.g., `2+2`) and see the answer appear on your canvas.
+4. **Topic Suggestions**: Search for any topic and get 3 relevant educational diagram ideas.
 
-## Architecture Diagram (Conceptual)
-Current structure consists of:
-- **Frontend**: React, TypeScript, Fabric.js
-- **Backend**: Python, FastAPI, Clean Architecture
-- **Database**: MongoDB
-- **Real-time**: WebSockets
-- **Deployment**: Docker, Nginx, GitHub Actions
+---
 
-## Setup Instructions
+## 🚀 How to Run Locally
 
-### Backend (Python/FastAPI)
-1. Navigate to the `backend` directory.
-2. Create a virtual environment: `python -m venv venv`
-3. Activate the environment: `venv\Scripts\activate` (Windows) or `source venv/bin/activate` (Mac/Linux).
-4. Install dependencies: `pip install -r requirements.txt`
-5. Run the dev server: `uvicorn app.main:app --reload`
+### 1. Prerequisites
+- [Node.js](https://nodejs.org/) installed on your machine.
+- An **OpenRouter API Key** (for Math Solver & Suggestions).
 
-### Frontend (React/TypeScript)
-*(Detailed instructions to be added once frontend is initialized)*
+### 2. Backend Setup
+1. Open a terminal in `neuroboard/backend`.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Create a `.env` file in the `backend` folder:
+   ```env
+   OPENROUTER_API_KEY=your_key_here
+   PORT=3001
+   ```
+4. Start the backend:
+   ```bash
+   node server.js
+   ```
 
-### Deployment Instructions
+### 3. Frontend Setup
+1. Open a **new** terminal in `neuroboard/frontend`.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the Vite dev server:
+   ```bash
+   npm run dev
+   ```
+4. Open your browser at: [http://localhost:5173](http://localhost:5173)
 
-#### 1. Local Development (Docker Compose)
-- We use Docker to host services (frontend, backend, mongodb, nginx).
-- Use `docker-compose up --build -d` to run the stack.
-- Access at your configured domain or `http://localhost`.
+---
 
-#### 3. VPS Deployment (Docker)
-- This project is configured to run as a **self-sustained container** on a VPS. It includes Nginx, FastAPI, and a local MongoDB instance.
-- **Port:** The container is hardcoded to listen on **port 8077** to avoid conflicts with existing sites on your VPS.
-- **Workflow:**
-- 1. Pull the repository to your VPS.
-- 2. Build the image: `docker build -t neuroboard:vps .`
-- 3. Run the container: `docker run -d -p 8077:8077 --name neuroboard neuroboard:vps`
-- 4. Access at `https://neuroboard.arsh-io.website`.
+## 🏗 Project structure
+- `frontend/`: React + Vite + Fabric.js
+- `backend/`: Node.js + Express + OpenRouter Integration
 
-### API Documentation
-Standard FastAPI Swagger docs are available at `/docs` when running the backend. Key endpoints soon to be implemented:
-- `POST /detect-shapes`
-- `POST /solve-math`
-- `POST /generate-diagram`
-- `POST /analyze-topic`
-- `POST /save-board`
-- `GET /board/{id}`
+---
 
-## Future Improvements
-- Add advanced custom shape detection
-- Integration with specialized LLM agents for deep subject explanations
-- Full history rewind and playback features
-
+## 💡 Notes for Presentation
+- **Demo Flow**: Draw a rough circle -> Click "Clean Diagram" -> Enter math expression -> Enter topic search.
+- **No Docker**: This version runs purely on Node.js processes for maximum stability during the presentation.

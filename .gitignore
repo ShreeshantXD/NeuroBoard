@@ -4,20 +4,5 @@ build/
 .env
 .env.local
 .DS_Store
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-
-# VS code
 .vscode/
-
-# Claude Code
 .claude/
